@@ -1,0 +1,454 @@
+import torch
+from torch.utils.data import Dataset, DataLoader
+import torchvision.transforms as transforms
+import os
+from PIL import Image
+import numpy as np
+import time
+import cv2
+import torch.nn.functional as F
+import random
+from pytorch_lightning import seed_everything
+from dataset import get_dataset_class, CustomTensorDataset_SD
+
+
+seed_everything(0)
+
+class WeatherDataset(Dataset):
+    
+    def __init__(self, root_dir, stage="train",ratio=0.2,size =(430,815),input_transform=None,output_transform=None):
+        self.root_dir = root_dir  # 数据存放的根目录
+        print("hello")
+        
+        self.input_variables = ["cape","d2m","msl","pwat","r_500","r_700","r_850","r_925","rain",
+                                "rain_big","rain_thud","t_500","t_700","t_850","t_925","t2m",
+                                "u_10","u_200","u_500","u_700","u_850","u_925","v_10","v_200","v_500",
+                                "v_700","v_850","v_925"]  
+        self.nwp_rain = ["rain"]  
+        self.output_variable = 'ob'  # 输出变量的名称
+        self.stage = stage
+        self.ratio = ratio
+        self.size = size
+        self.samples = []  # 样本列表
+        self.input_transform = input_transform
+        self.output_transform = output_transform
+        filenames = os.listdir(root_dir)
+        # filenames = sorted(filenames)
+        random.shuffle(filenames)
+        length = len(filenames)
+        
+        # train_files = filenames
+        train_files = filenames[:int(length*0.6)]
+        val_files = filenames[int(length*0.6):int(length*0.8)]
+        test_files = filenames[int(length*0.8):]
+       
+        if self.stage == "train":
+            files = train_files
+        elif self.stage == "val":
+            files = val_files
+        elif self.stage == "test":
+            files = test_files
+        for sample_id in files:
+            # import pdb;pdb.set_trace()  # 遍历所有日期的文件夹
+            sample_id_dir = os.path.join(root_dir, sample_id)  # 当前日期的完整路径
+            if not os.path.isdir(sample_id_dir):  # 如果不是文件夹，则跳过
+                continue
+            for filename in os.listdir(sample_id_dir):  # 遍历当前日期文件夹里的所有文件
+                if not filename.endswith('.png'):  # 如果不是png文件，则跳过
+                    continue
+                if len(filename.split('_')) == 3:
+                    variable_name, sample_id, frame_num = filename.split('_')[0:3]  # 从文件名中提取样本ID和帧数
+                elif len(filename.split('_')) == 4:
+                    variable_name, sample_id, frame_num = filename.split('_')[0]+'_'+filename.split('_')[1], filename.split('_')[2], filename.split('_')[3]
+                else:
+                    continue
+                sample_id = int(sample_id)  # 转换成整数类型
+                frame_num = int(frame_num.split('.')[0])  # 去掉文件扩展名，并转换成整数类型
+            self.samples.append((variable_name, sample_id, frame_num))
+            print(sample_id, frame_num)  # 将当前样本加入列表
+            self.samples.append(sample_id)  # 将当前样本加入列表
+
+    def __len__(self):
+        print(len(self.samples))
+        return len(self.samples)  # 返回样本数目
+
+    def __getitem__(self, idx):
+        sample_id = self.samples[idx]
+        if isinstance(sample_id, tuple):
+           sample_id_corrected = sample_id[1]  # Extract the middle value
+        else:
+            sample_id_corrected = sample_id
+        # import pdb;pdb.set_trace()  # 获取指定索引的样本的日期、ID和帧数
+        sample_dir = os.path.join(self.root_dir, str(sample_id_corrected))  # 根据日期生成该样本的路径
+        input_data = []  # 输入数据列表
+        input_rain = []
+        output_data_24h = []
+       
+        for hour in range(3, 27, 3):
+            var_name_3h_8_imgs = []
+            for var_name in self.input_variables:  # Iterate through input variables
+                # Extract only the middle element of the tuple (sample_id)
+                if isinstance(sample_id, tuple):
+                    sample_id_corrected = sample_id[1]  # Extract the middle value
+                else:
+                    sample_id_corrected = sample_id  # If already correct, use as is
+                
+                # Properly construct the file path using os.path.join
+                var_path = os.path.join(sample_dir, f"{var_name}_{sample_id_corrected}_{hour}.png")
+                var_path = os.path.normpath(var_path)  # Normalize path to ensure correct separator
+
+                # Debugging log to check the generated path
+                print(f"Attempting to read file(input): {var_path}")
+
+                # Check if the file exists
+                if not os.path.exists(var_path):
+                    print(f"File not found: {var_path}")
+                    continue  # Skip to the next file
+
+                # import pdb;pdb.set_trace()
+
+                # Read and process the image
+                var_data = cv2.imread(var_path, cv2.IMREAD_UNCHANGED)
+                if var_data is None:  # Check if the image was read successfully
+                    print(f"Failed to read file: {var_path}")
+                    continue
+
+                # Resize and transform the image
+                var_data = cv2.resize(var_data, self.size)
+                var_data = torch.tensor(var_data, dtype=torch.float)  # Correct dtype for PyTorch tensor
+                
+                if self.input_transform is not None:
+                    var_data = self.input_transform(var_data)
+
+                var_name_3h_8_imgs.append(var_data)
+                # print(var_name_3h_8_imgs)
+
+            if var_name_3h_8_imgs:  # Ensure there is valid data before stacking
+                channel_data = torch.stack(var_name_3h_8_imgs, dim=0)
+                input_data.append(channel_data)
+            # print(input_data)
+
+  # 将该变量的数据加入输入列表
+            
+        for hour in range(3,27,3):
+            var_rain_3h_8_imgs = []
+            for var_name in self.nwp_rain:
+                if isinstance(sample_id, tuple):
+                    sample_id_corrected = sample_id[1]  # Extract the middle value
+                else:
+                    sample_id_corrected = sample_id  # 遍历输入变量列表
+                var_path = os.path.join(sample_dir, f"{var_name}_{sample_id_corrected}_{hour}.png")
+                var_path = os.path.normpath(var_path)  # Normalize path to ensure correct separator
+
+                # Debugging log to check the generated path
+                print(f"Attempting to read file(rain): {var_path}")
+
+                # Check if the file exists
+                if not os.path.exists(var_path):
+                    print(f"File not found: {var_path}")
+                    continue  # Skip to the next file  # 根据变量名称、样本ID和帧数生成该变量的完整路径
+                var_data = cv2.imread(var_path, cv2.IMREAD_UNCHANGED)
+                var_data = cv2.resize(var_data, self.size)               
+                var_data = torch.tensor(var_data,dtype=float)                
+                if self.input_transform is not None:
+                    var_data = self.input_transform(var_data) 
+                var_rain_3h_8_imgs.append(var_data)
+                # print("rain",   var_rain_3h_8_imgs)
+            channel_data = torch.stack(var_rain_3h_8_imgs, dim=0) 
+            input_rain.append(channel_data)
+            # print(input_rain)  # 将该变量的数据加入输入列表
+        
+        # for hour in range(1,25):
+        for hour in range(3,27,3):
+            if isinstance(sample_id, tuple):
+                sample_id_corrected = sample_id[1]  # Extract the middle value
+            else:
+                sample_id_corrected = sample_id 
+
+            var_path = os.path.join(sample_dir, f"{var_name}_{sample_id_corrected}_{hour}.png")
+            output_data = os.path.normpath(var_path)  # Normalize path to ensure correct separator
+
+                # Debugging log to check the generated path
+            print(f"Attempting to read file(output): {var_path}")
+
+            # Check if the file exists
+            if not os.path.exists(var_path):
+                # print(f"File not found: {var_path}")
+                continue  # 根据输出变量名称、样本ID和帧数生成该变量的完整路径
+            output_data = cv2.imread(output_data, cv2.IMREAD_UNCHANGED)
+            output_data = cv2.resize(output_data, self.size)
+            output_data = torch.tensor(output_data,dtype=torch.long)
+            if self.output_transform is not None:
+                output_data = self.output_transform(output_data)
+            output_data_24h.append(output_data)
+            # print(output_data_24h)  # 将该变量的数据加入输出列表
+        # import pdb;pdb.set_trace()
+            
+        input_data = torch.stack(input_data)
+        input_data = torch.where(input_data > 250 ,0, input_data).squeeze()
+        input_rain = torch.stack(input_rain)
+        input_rain = torch.where(input_rain > 250 ,0, input_rain).squeeze()
+        output_data = torch.stack(output_data_24h)
+        output_data = torch.where(output_data > 250 ,0, output_data)   
+        return input_data, input_rain,output_data  # 返回输入列表和输出变量的数据
+    
+
+input_transform = transforms.Compose([
+    transforms.Resize((64, 64)),
+    transforms.ToTensor(),
+    # transforms.Normalize((0.5,), (0.5,))
+])
+output_transform = transforms.Compose([
+    transforms.Resize((64, 64)),
+    transforms.ToTensor(),
+    # transforms.Normalize((0.5,), (0.5,))
+])
+input_transform = None
+output_transform = None
+
+train_dataset = WeatherDataset('dataset/train', stage="train",ratio=0.2, size=(224,224),input_transform=input_transform,output_transform=output_transform)  # 创建天气预测数据集
+val_dataset = WeatherDataset('dataset/train', stage="val",ratio=0.2, size=(224,224),output_transform=output_transform)  # 创建天气预测数据集
+test_dataset = WeatherDataset('dataset/train', stage="test",ratio=0.2, size=(224,224),output_transform=output_transform)  # 创建天气预测数据集
+
+train_dataloader = DataLoader(train_dataset, batch_size=472, shuffle=True)
+val_dataloader = DataLoader(val_dataset, batch_size=472, shuffle=True)
+test_dataloader = DataLoader(test_dataset, batch_size=472, shuffle=True)
+# print("length of train",len(train_dataloader))
+# print("length of val",len(val_dataloader))
+# print("length of test",len(test_dataloader))
+# import pdb;pdb.set_trace()
+
+# for input_data,input_rain, output_data_24h in val_dataloader:
+#     # import pdb;pdb.set_trace()
+#     print(input_data.shape)
+#     # print('input_data max min mean std:',tensor_stats(input_data))
+#     input_data = torch.flatten(input_data, start_dim=0, end_dim=1)
+#     print(input_data.shape)
+#     # print(input_data.shape)
+#     # print('output_data max min mean std:',tensor_stats(output_data_24h))
+#     # print('input_data max min mean std:',tensor_stats(input_data))
+#     print(output_data_24h.shape)
+#     # Flatten the tensor first
+#     # Flatten the tensor first
+#     output_data_24h = torch.flatten(output_data_24h,start_dim=1)
+
+#     # Check the number of elements
+#     print(output_data_24h.shape)  # This should print 6422528
+
+#     # Now reshape to a valid shape based on the total number of elements
+#     output_data_24h = output_data_24h.reshape(16, 8, 224, 224)
+#     print(output_data_24h.shape)
+
+
+#     # print(input_data.shape)
+#     print(input_rain.shape)
+#     print(output_data_24h.shape)
+#     # print('output_data max min mean std:',tensor_stats(output_data_24h))
+#     input_data = torch.flatten(input_data, start_dim=0, end_dim=1)
+#     input_rain = torch.flatten(input_rain, start_dim=0, end_dim=1)
+#     output_data_24h = torch.flatten(output_data_24h, start_dim=0, end_dim=1)
+#     print(input_data.shape)
+#     print(input_rain.shape)
+#     print(output_data_24h.shape)
+
+for input_data,input_rain, output_data_24h in val_dataloader:
+    # print(input_data.shape)
+    # print('input_data max min mean std:',tensor_stats(input_data))
+    # input_data = torch.flatten(input_data, start_dim=0, end_dim=1)
+    # print(input_data.shape)
+    # print(input_data.shape)
+    # # print('input_data max min mean std:',tensor_stats(input_data))
+    # output_data_24h = output_data_24h.reshape(-1,3,815,430)
+    print(input_data.shape)
+    print(input_rain.shape)
+    print(output_data_24h.shape)
+    # print('output_data max min mean std:',tensor_stats(output_data_24h))
+    input_data = torch.flatten(input_data, start_dim=0, end_dim=1)
+    input_rain = torch.flatten(input_rain, start_dim=0, end_dim=1)
+    output_data_24h = torch.flatten(output_data_24h, start_dim=0, end_dim=1)
+    print(input_data.shape)
+    print(input_rain.shape)
+    print(output_data_24h.shape)
+    # 将PyTorch张量转换为NumPy数组
+    val_nwp = input_data.numpy()
+    val_nwp_rain = input_rain.numpy()
+    val_gt = output_data_24h.numpy()
+    
+
+    # 保存为.npy文件
+    np.save('dataset/val_nwp_224.npy', val_nwp)
+    np.save('dataset/val_rain_224.npy', val_nwp_rain)
+    np.save('dataset/val_gt_224.npy', val_gt)
+
+
+for input_data,input_rain, output_data_24h in train_dataloader:
+
+    print(input_data.shape)
+    print(input_rain.shape)
+    print(output_data_24h.shape)
+
+    input_data = torch.flatten(input_data, start_dim=0, end_dim=1)
+    input_rain = torch.flatten(input_rain, start_dim=0, end_dim=1)
+    output_data_24h = torch.flatten(output_data_24h, start_dim=0, end_dim=1)
+    # import pdb;pdb.set_trace()
+    # print(input_data.shape)
+    # # print('input_data max min mean std:',tensor_stats(input_data))
+    # input_data = torch.flatten(input_data, start_dim=0, end_dim=1)
+    # print(input_data.shape)
+    # # print(input_data.shape)
+    # # print('output_data max min mean std:',tensor_stats(output_data_24h))
+    # # print('input_data max min mean std:',tensor_stats(input_data))
+    # print(output_data_24h.shape)
+    # # Flatten the tensor first
+    # # Flatten the tensor first
+    # output_data_24h = torch.flatten(output_data_24h,start_dim=1)
+
+    # # Check the number of elements
+    # print(output_data_24h.shape)  # This should print 6422528
+
+    # # Now reshape to a valid shape based on the total number of elements
+    # output_data_24h = output_data_24h.reshape(50, 8, 224, 224)
+    # print(output_data_24h.shape)
+
+
+    # # print(input_data.shape)
+    # print(input_rain.shape)
+    # print(output_data_24h.shape)
+    # # print('output_data max min mean std:',tensor_stats(output_data_24h))
+    # input_data = torch.flatten(input_data, start_dim=0, end_dim=1)
+    # input_rain = torch.flatten(input_rain, start_dim=0, end_dim=1)
+    # output_data_24h = torch.flatten(output_data_24h, start_dim=0, end_dim=1)
+    # print(input_data.shape)
+    # print(input_rain.shape)
+    # print(output_data_24h.shape)
+
+    print(input_data.shape)
+    print(input_rain.shape)
+    print(output_data_24h.shape)
+    # 将PyTorch张量转换为NumPy数组
+    train_nwp = input_data.numpy()
+    train_nwp_rain = input_rain.numpy()
+    train_gt = output_data_24h.numpy()
+
+    # 保存为.npy文件
+    np.save('dataset/train_nwp_224.npy', train_nwp)
+    np.save('dataset/train_rain_224.npy', train_nwp_rain)
+    np.save('dataset/train_gt_224.npy', train_gt)
+
+for input_data,input_rain, output_data_24h in test_dataloader:
+
+    print(input_data.shape)
+    print(input_rain.shape)
+    print(output_data_24h.shape)
+
+    input_data = torch.flatten(input_data, start_dim=0, end_dim=1)
+    input_rain = torch.flatten(input_rain, start_dim=0, end_dim=1)
+    output_data_24h = torch.flatten(output_data_24h, start_dim=0, end_dim=1)
+    # import pdb;pdb.set_trace()
+    # print(input_data.shape)
+    # # print('input_data max min mean std:',tensor_stats(input_data))
+    # input_data = torch.flatten(input_data, start_dim=0, end_dim=1)
+    # print(input_data.shape)
+    # # print(input_data.shape)
+    # # print('output_data max min mean std:',tensor_stats(output_data_24h))
+    # # print('input_data max min mean std:',tensor_stats(input_data))
+    # print(output_data_24h.shape)
+    # # Flatten the tensor first
+    # # Flatten the tensor first
+    # output_data_24h = torch.flatten(output_data_24h,start_dim=1)
+
+    # # Check the number of elements
+    # print(output_data_24h.shape)  # This should print 6422528
+
+    # # Now reshape to a valid shape based on the total number of elements
+    # output_data_24h = output_data_24h.reshape(18, 8, 224, 224)
+    # print(output_data_24h.shape)
+
+
+    # # print(input_data.shape)
+    # print(input_rain.shape)
+    # print(output_data_24h.shape)
+    # # print('output_data max min mean std:',tensor_stats(output_data_24h))
+    # input_data = torch.flatten(input_data, start_dim=0, end_dim=1)
+    # input_rain = torch.flatten(input_rain, start_dim=0, end_dim=1)
+    # output_data_24h = torch.flatten(output_data_24h, start_dim=0, end_dim=1)
+    # print(input_data.shape)
+    # print(input_rain.shape)
+    # print(output_data_24h.shape)
+    # 将PyTorch张量转换为NumPy数组
+    print(input_data.shape)
+    print(input_rain.shape)
+    print(output_data_24h.shape)
+    test_nwp = input_data.numpy()
+    test_nwp_rain = input_rain.numpy()
+    test_gt = output_data_24h.numpy()
+
+    # import pdb;pdb.set_trace()
+
+
+    # 保存为.npy文件
+    np.save('dataset/test_nwp_224.npy', test_nwp)
+    np.save('dataset/test_rain_224.npy', test_nwp_rain)
+    np.save('dataset/test_gt_224.npy', test_gt)
+    
+    
+trn_x = np.load('dataset/train_nwp_224.npy')
+trn_y = np.load('dataset/train_gt_224.npy')
+tst_x = np.load('dataset/val_nwp_224.npy')
+vld_y = np.load('dataset/val_gt_224.npy')
+vld_x = np.load('dataset/test_nwp_224.npy')
+tst_y = np.load('dataset/test_gt_224.npy')
+
+tensor1 = torch.from_numpy(trn_y)
+tensor2 = torch.from_numpy(tst_y)
+tensor3 = torch.from_numpy(vld_y)
+
+
+c1 = torch.concat([tensor1,tensor2,tensor3],dim=0)
+flattened_tensor = c1.view(-1)
+
+
+print(c1.shape)
+# # 将张量展平为一维张量
+flattened_tensor = c1.view(-1)
+
+# 统计所有像素的数量
+total_pixel_count = flattened_tensor.numel()  # 获取元素总数
+print(total_pixel_count)
+positive_pixel_count = (flattened_tensor ==0 ).sum().item()  # 统计大于0的像素数量
+positive_pixel_count_1 = (flattened_tensor >=2 ).sum().item()  # 统计大于0的像素数量
+positive_pixel_count_2 = (flattened_tensor >0 ).sum().item()  # 统计大于0的像素数量
+positive_pixel_count = positive_pixel_count_2 - positive_pixel_count_1
+print(positive_pixel_count)
+print(positive_pixel_count/total_pixel_count)
+
+trn_x = np.load('dataset/train_nwp_224.npy')
+trn_y = np.load('dataset/train_gt_224.npy')
+
+tst_x = np.load('dataset/test_nwp_224.npy')
+tst_y = np.load('dataset/test_gt_224.npy')
+
+vld_x = np.load('dataset/val_nwp_224.npy')
+vld_y = np.load('dataset/val_gt_224.npy')
+
+# gt_tensors= torch.from_numpy(vld_y)
+# print(gt_tensors)
+
+batch_size = 4
+train_dataset = CustomTensorDataset_SD(torch.from_numpy(trn_x),torch.from_numpy(trn_y))
+val_dataset = CustomTensorDataset_SD(torch.from_numpy(vld_x),torch.from_numpy(vld_y))
+test_dataset = CustomTensorDataset_SD(torch.from_numpy(tst_x),torch.from_numpy(tst_y))
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+valid_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+for x,y,z in valid_loader:
+    print(x.shape,y.shape)
+
+
+for x,y,z in train_loader:
+    print(x.shape,y.shape)
+
+for x,y,z in test_loader:
+    print(x.shape,y.shape)
+

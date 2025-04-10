@@ -1,0 +1,24 @@
+export CUDA_VISIBLE_DEVICES=1
+nohup python train_Korea.py --model="SwinUnet_CAM_Two" --device=1 --seed=1 --input_data="gdaps_kim" \
+                --num_epochs=50 --normalization \
+                --rain_thresholds 0.1 10.0 \
+                --start_lead_time 6 --end_lead_time 88 \
+                --interpolate_aws \
+                --intermediate_test \
+                --log_dir logs/logs_1117_Korea \
+                --batch_size 1 \
+                --window_size 6 \
+                --dataset_dir nims \
+                --tsvit_patch_size 8 \
+                --tsvit_time_emd_dim 6 \
+                --temporal_depth 4 \
+                --spatial_depth 4 \
+                --lr 0.0001 \
+                --dropout 0.0 \
+                --use_two \
+                --loss focal+mse \
+                --alpha 100 \
+                --kernel_size 3 \
+                --weight_version 2 \
+                --wd_ep 100 \
+                --custom_name="Korea_SwinUnet_CAMT_50ep_seed_0" &
