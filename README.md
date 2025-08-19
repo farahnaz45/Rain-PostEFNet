@@ -4,9 +4,36 @@
 
 ## Overview
 
-![alt text](./pic/PostRainBench.png)
-
-PostRainBench is a comprehensive multi-variable benchmark, which covers the full spectrum of scenarios with and without temporal information and various combinations of NWP input variables. We propose CAMT, a simple yet effective Channel Attention Enhanced Multi-task Learning framework with a specially designed weighted loss function. CAMT is flexible and can be plugged into different model backbones.
+Accurate precipitation forecasting is essential for
+disaster preparedness, water resource management, and climate
+modeling. Numerical Weather Prediction (NWP) models, while
+extensively utilized, suffer from inherent limitations such as
+systematic biases, coarse spatial resolution, and difficulty in ac-
+curately predicting extreme rainfall events. Deep learning-based
+post-processing has emerged as a promising approach to refine
+NWP outputs; however, existing methods struggle with effectively
+capturing multi-scale meteorological features and addressing
+severe class imbalances in extreme precipitation predictions.
+To overcome these challenges, we propose Rain-PostEFNet, a
+deep learning framework designed for post-processing NWP
+precipitation forecasts. The model integrates EfficientNet for
+feature extraction, ECA-Net for adaptive channel attention, and
+FPN-Swin-Unet for multi-scale feature refinement, along with a
+multi-task learning strategy that jointly optimizes classification
+and regression tasks using weighted focal loss and MSE loss. We
+evaluate our approach on the PostRainBench datasets (China,
+Germany, Korea) using Critical Success Index (CSI), Heidke
+Skill Score (HSS), and Accuracy (ACC) as evaluation metrics.
+Experimental results demonstrate that Rain-PostEFNet surpasses
+state-of-the-art baselines, achieving CSI improvements of 63.94%
+(China), 4.28% (Germany), and 2.1% (Korea) for moderate
+rain classification, and 78.34% (China), 9.09% (Germany), and
+7.68% (Korea) for heavy rain classification. Similarly, HSS scores
+improve by 52.18% in China and 2.95% in Germany for rain,
+and by 52.4% in China and 6.78% in Germany for heavy rain.
+Additionally, an ablation study further confirms the impact of
+the multi-task learning framework and attention mechanisms in
+refining NWP predictions.
 
 ## Dataset
 
