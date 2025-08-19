@@ -1,10 +1,6 @@
-# PostRainBench
+# Rain-PostEFnet
 
- ## Introduction
-
-This is the official PyTorch implementation of PostRainBench: [PostRainBench: A comprehensive benchmark and a new model for precipitation forecasting](https://arxiv.org/abs/2310.02676).
-
-**🎉🎉** PostRainBench was accepted  by ICLR24 Workshop: Tackling Climate Change with Machine Learning! 
+ 
 
 ## Overview
 
