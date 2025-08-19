@@ -37,27 +37,8 @@ refining NWP predictions.
 
 ## Dataset
 
-We summarize three NWP datasets with different spatial and temporal resolutions in the following table.
+We summarize three NWP datasets with different spatial and temporal resolutions in the following 
 
-![alt text](./pic/Dataset.png)
-
-## Results
-
-### 🏆 Achieve state-of-the-art in NWP Post-processing based Precipitation Forecasting
-
-Extensive experimental results on the proposed benchmark show that our method outperforms state-of-the-art methods by 6.3%, 4.7%, and 26.8% in rain CSI on the three datasets respectively. Most notably, our model is the first deep learning-based method to outperform traditional Numerical Weather Prediction (NWP) approaches in extreme precipitation conditions. It shows improvements of 15.6%, 17.4%, and 31.8% over NWP predictions in heavy rain CSI on respective datasets. These results highlight the potential impact of our model in reducing the severe consequences of extreme weather events.
-
-![alt text](./pic/Result.png)
-
-### 🌟 Alation Study
-
-We conduct an ablation study by systematically disabling certain components of our CAMT Component and evaluating the CSI results for both rain and heavy rain. Specifically, we focus on the weighted loss, multi-task learning, and channel attention modules as these are unique additions to the Swin-Unet backbone.
-
-In the first part, we use Swin-Unet with CAMT framework (a) as a baseline and we disable each component in CAMT and demonstrate their respective outcomes. In the second part, we use Swin-Unet without CAMT framework (e) as a baseline and we gradually add each component to the model to understand its role.
-
-![alt text](./pic/Ablation.png)
-
-Although Swin-Unet can achieve a relatively high CSI when used alone (e), it does not have the ability to predict heavy rain. Importantly, these three enhancements complement each other. Weighted loss and multi-task learning are effective in improving simultaneous forecasting under the unbalanced distribution of light rain and heavy rain, while CAM provides comprehensive improvements.
 
 ## Dataset
 
