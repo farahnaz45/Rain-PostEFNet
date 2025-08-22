@@ -35,7 +35,8 @@ Additionally, an ablation study further confirms the impact of
 the multi-task learning framework and attention mechanisms in
 refining NWP predictions.
 
-[Main Architecture PDF](https://github.com/username/repository-name/raw/main/Main-architecture.pdf)
+![Architecture](Figures/architecture.jpg)
+
 
 
 
@@ -53,30 +54,15 @@ https://www.dropbox.com/sh/vbme8g8wtx9pitg/AAAB4o6_GhRq0wMc1JxdXFrVa?dl=0
 Germany Dataset：
 
 https://zenodo.org/records/7244319
+![Germany Data Distribution](Figures/Germany%20data%20distribution.png)
 
 China Dataset:
 
 https://drive.google.com/file/d/1rBvxtQ8Gh9dXzh-okEOVpA8ZeDzr7yAI/view?usp=drive_link
 
-## Code
+![China Data Distribution](Figures/china%20data%20distribution.png)
 
-Conda Environment
-
-```
-conda env create --file enviromental.yml
-conda activate PRBench
-```
-
-For model training
-
-```
-bash scripts/SwinUnet_CAMT.sh
-```
-
-Key components of our model are encapsulated in:
-
-- `/model/swinunet_model.py`: Defines the `SwinUnet_CAM_Two` class, incorporating the SwinUnet architecture, multi-task learning heads, and the Channel Attention Module.
-- `losses.py`: Including the weighted loss and multi-task learning loss functions.
+d multi-task learning loss functions.
 
 ## Acknowledgement
 
