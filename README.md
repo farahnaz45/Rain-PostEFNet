@@ -35,6 +35,10 @@ Additionally, an ablation study further confirms the impact of
 the multi-task learning framework and attention mechanisms in
 refining NWP predictions.
 
+[Main Architecture PDF](https://github.com/username/repository-name/raw/main/Main-architecture.pdf)
+
+
+
 ## Dataset
 
 We summarize three NWP datasets with different spatial and temporal resolutions in the following 
